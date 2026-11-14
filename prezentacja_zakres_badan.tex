@@ -1,0 +1,692 @@
+% ============================================================
+% Prezentacja: Zakres badań – praca magisterska
+% Temat: Wpływ strategii zastępowania pikseli na metryki
+%        Insertion/Deletion w wyjaśnialności CNN
+% ============================================================
+\documentclass[aspectratio=169, 12pt]{beamer}
+
+% ── Pakiety ───────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{algorithm2e}
+
+% ── Motyw ─────────────────────────────────────────────────
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\definecolor{mainblue}{RGB}{25, 60, 120}
+\definecolor{accentred}{RGB}{180, 30, 30}
+\definecolor{lightgray}{RGB}{240, 240, 245}
+\definecolor{darkgray}{RGB}{80, 80, 80}
+\definecolor{successgreen}{RGB}{30, 130, 60}
+
+\setbeamercolor{frametitle}{bg=mainblue, fg=white}
+\setbeamercolor{title}{bg=mainblue, fg=white}
+\setbeamercolor{block title}{bg=mainblue!85, fg=white}
+\setbeamercolor{block body}{bg=lightgray}
+\setbeamercolor{section in toc}{fg=mainblue}
+\setbeamercolor{itemize item}{fg=mainblue}
+\setbeamercolor{itemize subitem}{fg=accentred}
+\setbeamercolor{enumerate item}{fg=mainblue}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.4\paperwidth,ht=2.5ex,dp=1.125ex,leftskip=.3cm]{author in head/foot}%
+      \usebeamerfont{author in head/foot}\insertshortauthor
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.4\paperwidth,ht=2.5ex,dp=1.125ex,center]{title in head/foot}%
+      \usebeamerfont{title in head/foot}\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.2\paperwidth,ht=2.5ex,dp=1.125ex,rightskip=.3cm,right]{date in head/foot}%
+      \insertframenumber{} / \inserttotalframenumber
+    \end{beamercolorbox}%
+  }%
+}
+
+% ── Metadane ──────────────────────────────────────────────
+\title[XAI – Insertion/Deletion]{Wpływ strategii zastępowania pikseli\\
+na metryki Insertion/Deletion\\
+w wyjaśnialności CNN}
+\subtitle{Zakres badań eksperymentalnych\\[4pt]
+\small Określenie metod i kryteriów porównawczych}
+\author[J. Kala]{Jacek Kala}
+\institute{Studia magisterskie Data Science}
+\date{Listopad 2026}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% ── Slajd tytułowy ────────────────────────────────────────
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ── Spis treści ───────────────────────────────────────────
+\begin{frame}{Plan prezentacji}
+  \tableofcontents
+\end{frame}
+
+% ============================================================
+\section{Motywacja i luka badawcza}
+% ============================================================
+
+\begin{frame}{Kontekst: wyjaśnialność modeli CNN}
+  \begin{columns}[T]
+    \begin{column}{.55\textwidth}
+      \begin{itemize}
+        \item Modele CNN osiągają wysoką dokładność klasyfikacji obrazów,\\
+              ale są \textbf{czarnymi skrzynkami} (\textit{black boxes})
+        \item Metody XAI (\textit{Explainable AI}) tworzą mapy istotności
+              wskazujące, \textbf{które piksele} wpłynęły na decyzję modelu
+        \item Kluczowe pytanie: jak \emph{wiernie} odzwierciedlają
+              rzeczywistą logikę modelu?
+      \end{itemize}
+      \vspace{6pt}
+      \begin{block}{Metryki ewaluacji XAI}
+        \textbf{Insertion} i \textbf{Deletion} (Petsiuk et al., 2018) \\
+        to dominujące metryki jakości map istotności
+      \end{block}
+    \end{column}
+    \begin{column}{.42\textwidth}
+      \begin{tikzpicture}[scale=0.85]
+        \draw[fill=mainblue!15, rounded corners=4pt] (0,0) rectangle (4,2.4);
+        \node[font=\small\bfseries, mainblue] at (2,2.1) {Obraz wejściowy};
+        \draw[->, thick, mainblue] (2,0) -- (2,-0.8);
+        \draw[fill=mainblue!30, rounded corners=4pt] (0.2,-0.8) rectangle (3.8,-2.0);
+        \node[font=\small] at (2,-1.4) {CNN (ResNet50)};
+        \draw[->, thick, mainblue] (2,-2.0) -- (2,-2.8);
+        \node[font=\small, accentred] at (2,-3.1) {Klasa + mapa istotności};
+        \draw[fill=accentred!10, rounded corners=4pt] (0,-3.5) rectangle (4,-4.5);
+        \node[font=\footnotesize] at (2,-4.0) {Metoda XAI\\(GradCAM, LIME, \ldots)};
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Metryki Insertion i Deletion — definicja}
+  \begin{columns}[T]
+    \begin{column}{.48\textwidth}
+      \begin{block}{Deletion}
+        Zaczynamy od \textbf{oryginalnego} obrazu.\\
+        Stopniowo \textbf{usuwamy} piksele (sortowane malejąco
+        według ważności).\\[4pt]
+        \textcolor{accentred}{$\downarrow$ konfidencja = dobra mapa}\\[4pt]
+        \[ \text{AUC}_\text{del} = \int_0^1 f_\theta(\hat{x}(t))\,dt \]
+        \small im \textbf{mniejsze} AUC, tym lepsza mapa istotności
+      \end{block}
+    \end{column}
+    \begin{column}{.48\textwidth}
+      \begin{block}{Insertion}
+        Zaczynamy od \textbf{zastąpionego} obrazu (baseline).\\
+        Stopniowo \textbf{wstawiamy} piksele (sortowane malejąco
+        według ważności).\\[4pt]
+        \textcolor{successgreen}{$\uparrow$ konfidencja = dobra mapa}\\[4pt]
+        \[ \text{AUC}_\text{ins} = \int_0^1 f_\theta(\tilde{x}(t))\,dt \]
+        \small im \textbf{większe} AUC, tym lepsza mapa istotności
+      \end{block}
+    \end{column}
+  \end{columns}
+  \vspace{8pt}
+  \begin{alertblock}{Kluczowe założenie}
+    Obie metryki zakładają, że \textbf{zastąpione piksele nie zawierają informacji}
+    o klasie — co zależy od strategii zastępowania!
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Luka badawcza}
+  \begin{columns}[T]
+    \begin{column}{.55\textwidth}
+      \textbf{Problem:} Usunięte piksele muszą być \emph{czymś} zastąpione.\\[6pt]
+      Standardowe podejście: \textcolor{darkgray}{czarne piksele (zero)}\\[8pt]
+
+      \begin{itemize}
+        \item Tworzy \textbf{wejścia spoza rozkładu treningowego}\\
+              (\textit{out-of-distribution, OoD})
+        \item Model może tracić konfidencję z powodu \textbf{nienaturalności}
+              obrazu, a nie braku cech dyskryminacyjnych
+        \item Wyniki zależą od strategii — ale jak bardzo?
+      \end{itemize}
+
+      \vspace{6pt}
+      \begin{exampleblock}{Future work (praca źródłowa)}
+        \small ``\textit{One option would be to explore alternatives for replacing
+        features in methods like Insertion/Deletion, such as leveraging a background
+        dataset as in SHAP, which could provide new insight into feature attribution
+        and interpretability.}''
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{.42\textwidth}
+      \begin{tikzpicture}[scale=0.9]
+        % Original
+        \draw[fill=green!10, rounded corners=3pt] (0,4) rectangle (3.5,5);
+        \node[font=\scriptsize] at (1.75,4.5) {Oryginalny obraz};
+        % Arrow
+        \draw[->, thick] (1.75,4) -- (1.75,3.4);
+        % Replacement strategies
+        \draw[fill=orange!20, rounded corners=3pt] (0,3.4) rectangle (1.5,2.5);
+        \node[font=\tiny, align=center] at (0.75,2.95) {Czarne\\piksele};
+        \draw[fill=blue!10, rounded corners=3pt] (2,3.4) rectangle (3.5,2.5);
+        \node[font=\tiny, align=center] at (2.75,2.95) {Blur /\\Mean BG};
+        \draw[->, thick] (0.75,2.5) -- (0.75,1.9);
+        \draw[->, thick] (2.75,2.5) -- (2.75,1.9);
+        % OoD
+        \draw[fill=red!15, rounded corners=3pt] (0,1.9) rectangle (1.5,1.1);
+        \node[font=\tiny, accentred, align=center] at (0.75,1.5) {Duże\\OoD};
+        \draw[fill=green!15, rounded corners=3pt] (2,1.9) rectangle (3.5,1.1);
+        \node[font=\tiny, successgreen, align=center] at (2.75,1.5) {Małe\\OoD};
+        % Question
+        \node[font=\scriptsize\bfseries, mainblue] at (1.75,0.6) {Która jest lepsza?};
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ============================================================
+\section{Cel i pytania badawcze}
+% ============================================================
+
+\begin{frame}{Cel pracy i pytania badawcze}
+  \begin{block}{Główny cel pracy}
+    Empiryczna analiza wpływu strategii zastępowania pikseli na wyniki
+    metryk Insertion/Deletion dla czterech metod XAI zastosowanych do
+    klasyfikatora CNN.
+  \end{block}
+
+  \vspace{10pt}
+  \begin{enumerate}
+    \item[\textbf{P1}] Jak bardzo różnią się wartości AUC$_\text{ins}$ i
+          AUC$_\text{del}$ w zależności od strategii zastępowania?
+    \vspace{4pt}
+    \item[\textbf{P2}] Czy strategia zastępowania zmienia \textbf{ranking} metod XAI?
+          (korelacja rang Kendalla)
+    \vspace{4pt}
+    \item[\textbf{P3}] Która strategia jest \textbf{najmniej} podatna na problem OoD?
+          (entropia predykcji na w pełni zastąpionych obrazach)
+    \vspace{4pt}
+    \item[\textbf{P4}] Czy generatywne uzupełnianie (inpainting)
+          dostarcza bardziej \textbf{wiarygodnych} metryk niż proste baseline'y?
+  \end{enumerate}
+\end{frame}
+
+% ============================================================
+\section{Dane i model}
+% ============================================================
+
+\begin{frame}{Dane eksperymentalne i model}
+  \begin{columns}[T]
+    \begin{column}{.48\textwidth}
+      \begin{block}{Dataset: ImageNette2-160}
+        \begin{itemize}
+          \item Podzbiór ImageNet — 10 klas
+          \item \textasciitilde 13 000 obrazów treningowych
+          \item \textasciitilde 500 obrazów walidacyjnych
+          \item Rozdzielczość: $224\times224$ (resize)
+          \item Klasy: tench, springer, cassette player,\\
+                chain saw, church, French horn,\\
+                garbage truck, gas pump,\\
+                golf ball, parachute
+        \end{itemize}
+      \end{block}
+      \vspace{4pt}
+      \textbf{Do eksperymentów:} 50 obrazów (5 / klasę)\\
+      \textbf{Zbiór tła (background):} 20 obrazów treningowych (2 / klasę)
+    \end{column}
+    \begin{column}{.48\textwidth}
+      \begin{block}{Model: ResNet50}
+        \begin{itemize}
+          \item Pretrenowany na ImageNet (torchvision)
+          \item Freeze — brak finetuningu
+          \item Top-1 acc. na ImageNet: \textbf{76.1\%}
+          \item Użyty do: forward pass + saliency
+        \end{itemize}
+      \end{block}
+      \vspace{6pt}
+      \begin{block}{Uzasadnienie wyboru}
+        \begin{itemize}
+          \item Popularny model referencyjny w literaturze XAI
+          \item Dobrze zrozumiana architektura
+          \item Łatwy dostęp do warstwy \texttt{layer4} (GradCAM)
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ============================================================
+\section{Metody XAI}
+% ============================================================
+
+\begin{frame}{Metody XAI — przegląd}
+  \begin{columns}[T]
+    \begin{column}{.48\textwidth}
+      \begin{block}{GradCAM \small(Selvaraju et al., 2017)}
+        \begin{itemize}
+          \item Gradient klasy względem ostatniej warstwy konwolucyjnej
+          \item \textbf{Szybka}, działa lokalnie w sieci
+          \item Niska rozdzielczość mapy — upsample do $224\times224$
+        \end{itemize}
+      \end{block}
+      \vspace{6pt}
+      \begin{block}{Integrated Gradients \small(Sundararajan et al., 2017)}
+        \begin{itemize}
+          \item Całka gradientu wzdłuż ścieżki od baseline do wejścia
+          \item Spełnia aksjomaty atrybucji (completeness, sensitivity)
+          \item Baseline: czarny obraz ($\mathbf{x}' = \mathbf{0}$)
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{.48\textwidth}
+      \begin{block}{LIME \small(Ribeiro et al., 2016)}
+        \begin{itemize}
+          \item Lokalne liniowe przybliżenie modelu
+          \item Perturbacja superpikselami (SLIC segmentation)
+          \item $n=500$ próbek, kolorowanie: czarne piksele
+        \end{itemize}
+      \end{block}
+      \vspace{6pt}
+      \begin{block}{SHAP — GradientExplainer \small(Lundberg, Lee, 2017)}
+        \begin{itemize}
+          \item Wartości Shapleya — sprawiedliwy podział atrybucji
+          \item Wymaga \textbf{zbioru tła} (background dataset)
+          \item 20 obrazów treningowych jako background
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+  \vspace{6pt}
+  \small
+  Wszystkie metody zwracają mapę $\mathbf{S} \in [0,1]^{H \times W}$
+  — znormalizowaną do przedziału $[0,1]$ przed dalszą analizą.
+\end{frame}
+
+% ============================================================
+\section{Strategie zastępowania pikseli}
+% ============================================================
+
+\begin{frame}{Strategie zastępowania pikseli — przegląd}
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabular}{>{\bfseries\small}p{2.6cm}
+                  >{\small}p{4.5cm}
+                  >{\small}p{3.8cm}}
+    \toprule
+    \textbf{Strategia} & \textbf{Opis} & \textbf{Zalety / wady} \\
+    \midrule
+    \rowcolor{lightgray}
+    Black (zero) &
+      Piksele $\leftarrow 0$ (w przestrzeni znormalizowanej) &
+      Prosta, szybka \textcolor{accentred}{/ duże OoD} \\
+
+    Gaussian Blur &
+      Piksele $\leftarrow$ wygładzony oryginał ($\sigma=10$) &
+      Zachowuje strukturę \textcolor{accentred}{/ może zachować cechy} \\
+
+    \rowcolor{lightgray}
+    Mean Background &
+      Piksele $\leftarrow$ średni piksel ze zbioru treningowego &
+      Zbliżone do SHAP \textcolor{successgreen}{/ in-distribution} \\
+
+    Random Noise &
+      Piksele $\leftarrow \mathcal{N}(0, \sigma^2)$ &
+      Stochastyczna \textcolor{accentred}{/ najmniej naturalna} \\
+
+    \rowcolor{lightgray}
+    CV2 Inpainting &
+      Algorytm Telea — uzupełnia z sąsiadów &
+      Spójna wizualnie \textcolor{successgreen}{/ szybka} \\
+
+    SD Inpainting &
+      Stable Diffusion 2 (opcjonalne) &
+      Fotorealistyczna \textcolor{accentred}{/ wolna, stochastyczna} \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{6pt}
+  \begin{alertblock}{Hipoteza robocza}
+    Strategie bliższe rozkładowi treningowemu (Mean BG, CV2 Inpainting)
+    dadzą \textbf{bardziej stabilne i wiarygodne} metryki niż Black / Noise.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Algorytm CV2 Inpainting (Telea, 2004)}
+  \begin{columns}[T]
+    \begin{column}{.5\textwidth}
+      \begin{itemize}
+        \item Uzupełnia maskowane obszary propagując z granic
+        \item Oparty na równaniach Naviera-Stokesa
+        \item Parametr: promień inpaintingu ($r=3$ px)
+        \item Dylatacja maski (kernel $3\times3$, 1 iteracja)
+              zapobiega artefaktom na krawędzi
+      \end{itemize}
+      \vspace{6pt}
+      Złożoność: $\mathcal{O}(|\Omega| \cdot r^2)$ gdzie $\Omega$ = obszar maski
+    \end{column}
+    \begin{column}{.47\textwidth}
+      \begin{block}{Algorytm (schemat)}
+        \small
+        \begin{enumerate}
+          \item Wyznacz maskę $M$ z mapy istotności
+          \item Dylatacja: $M' = M \oplus B_{3\times3}$
+          \item Inpainting: $I' = \text{Telea}(I, M')$
+          \item Sklejanie: $I_\text{out}[M=0] = I'[M=0]$
+        \end{enumerate}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ============================================================
+\section{Projekt eksperymentów}
+% ============================================================
+
+\begin{frame}{Projekt eksperymentów}
+  \begin{block}{Schemat eksperymentu}
+    $N_\text{img} = 50$ obrazów $\times$
+    $N_\text{XAI} = 4$ metody $\times$
+    $N_\text{strat} = 5$ strategii
+    $= \mathbf{1000}$ obserwacji (AUC$_\text{ins}$ + AUC$_\text{del}$)
+  \end{block}
+
+  \vspace{8pt}
+  \begin{columns}[T]
+    \begin{column}{.5\textwidth}
+      \textbf{Dla każdego obrazu $i$, metody $m$, strategii $s$:}
+      \begin{enumerate}
+        \item Oblicz mapę istotności $\mathbf{S}_{i,m}$
+        \item Posortuj piksele malejąco: $\pi = \text{argsort}(\mathbf{S})$
+        \item Dla $t \in \{0, \frac{1}{T}, \ldots, 1\}$ ($T=20$ kroków):
+        \begin{itemize}
+          \item Insertion: zastąp wszystko oprócz top-$t$
+          \item Deletion: zastąp top-$t$
+          \item Zmierz $f_\theta(x_t)[y_i]$
+        \end{itemize}
+        \item Oblicz AUC metodą trapezów
+      \end{enumerate}
+    \end{column}
+    \begin{column}{.47\textwidth}
+      \begin{tikzpicture}[scale=0.85]
+        \begin{axis}[
+          xlabel={\small Ułamek pikseli},
+          ylabel={\small Konfidencja},
+          xmin=0, xmax=1, ymin=0, ymax=1,
+          width=5.5cm, height=4cm,
+          legend style={font=\tiny, at={(0.98,0.02)}, anchor=south east},
+          grid=major, grid style={dotted, gray!40},
+          tick label style={font=\tiny}
+        ]
+        % Insertion (ideal)
+        \addplot[color=successgreen, thick, smooth]
+          coordinates {(0,0.05)(0.1,0.2)(0.2,0.45)(0.3,0.6)
+                       (0.5,0.75)(0.7,0.85)(1,0.88)};
+        \addlegendentry{Insertion (↑ better)}
+        % Deletion (ideal)
+        \addplot[color=accentred, thick, smooth]
+          coordinates {(0,0.88)(0.1,0.72)(0.2,0.55)(0.3,0.4)
+                       (0.5,0.25)(0.7,0.12)(1,0.05)};
+        \addlegendentry{Deletion (↓ better)}
+        % AUC fill
+        \addplot[fill=successgreen, fill opacity=0.1, draw=none]
+          coordinates {(0,0)(0.1,0.2)(0.2,0.45)(0.3,0.6)
+                       (0.5,0.75)(0.7,0.85)(1,0.88)(1,0)(0,0)};
+        \end{axis}
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ============================================================
+\section{Kryteria porównawcze}
+% ============================================================
+
+\begin{frame}{Kryteria porównawcze}
+  \renewcommand{\arraystretch}{1.35}
+  \small
+  \begin{tabular}{>{\bfseries}p{3.6cm}
+                  >{\raggedright\arraybackslash}p{4.5cm}
+                  >{\raggedright\arraybackslash}p{3.4cm}}
+    \toprule
+    \textbf{Kryterium} & \textbf{Miara} & \textbf{Interpretacja} \\
+    \midrule
+    \rowcolor{lightgray}
+    Wierność – Insertion &
+      $\text{AUC}_\text{ins} \in [0,1]$ &
+      Wyższe = lepsza mapa XAI \\
+
+    Wierność – Deletion &
+      $\text{AUC}_\text{del} \in [0,1]$ &
+      Niższe = lepsza mapa XAI \\
+
+    \rowcolor{lightgray}
+    Wrażliwość na OoD &
+      Konfidencja i entropia na w pełni zastąpionych obrazach &
+      Niższa konfidencja = mniej OoD \\
+
+    Stabilność rankingu &
+      Kendall's $\tau$ między parami strategii &
+      $\tau \approx 1$ = strategie są zgodne \\
+
+    \rowcolor{lightgray}
+    Jakość wizualna &
+      SSIM między oryginałem a zastąpionym (przed maskowaniem) &
+      Wyższy SSIM = mniej artefaktów \\
+
+    Czas obliczeń &
+      Czas na 1 obraz $\times$ 1 metodę XAI [s] &
+      Praktyczna wykonalność \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{8pt}
+  \begin{block}{Złożony wskaźnik jakości (propozycja)}
+    \[ Q = \text{AUC}_\text{ins} - \text{AUC}_\text{del} + \alpha \cdot (1 - P_\text{OoD}) \]
+    gdzie $\alpha=0.5$ balansuje wierność i OoD-awareness.
+  \end{block}
+\end{frame}
+
+% ============================================================
+\section{Oczekiwane wyniki}
+% ============================================================
+
+\begin{frame}{Oczekiwane wyniki i hipotezy}
+  \begin{columns}[T]
+    \begin{column}{.5\textwidth}
+      \begin{block}{H1 — Różnica AUC między strategiami}
+        Spodziewamy się \textbf{istotnych statystycznie} różnic AUC
+        między Black a CV2 Inpainting ($>0.05$ punktu AUC)
+      \end{block}
+      \vspace{6pt}
+      \begin{block}{H2 — Zmiana rankingu XAI}
+        Strategia zastępowania zmienia ranking metod XAI
+        (Kendall's $\tau < 0.8$ między Black a CV2 Inpainting)
+      \end{block}
+    \end{column}
+    \begin{column}{.47\textwidth}
+      \begin{block}{H3 — Inpainting redukuje OoD}
+        CV2 Inpainting daje niższą konfidencję na w pełni
+        zastąpionych obrazach niż Black i Noise
+      \end{block}
+      \vspace{6pt}
+      \begin{block}{H4 — LIME najbardziej wrażliwy}
+        LIME (oparty na superpikselach) będzie wykazywał
+        najwyższą wariancję AUC między strategiami,
+        bo jego segmentacja zakłada konkretny sposób perturbacji
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ============================================================
+\section{Harmonogram i podsumowanie}
+% ============================================================
+
+\begin{frame}{Harmonogram prac}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{>{\bfseries}p{2.8cm}
+                  >{\raggedright\arraybackslash}p{8.5cm}}
+    \toprule
+    \textbf{Faza} & \textbf{Zadania} \\
+    \midrule
+    Grudzień 2026 &
+      Implementacja pipeline'u eksperymentalnego (notebook)\\
+      & Testy i walidacja implementacji na 10 obrazach \\
+
+    Styczeń 2027 &
+      Pełne eksperymenty (50 obrazów × 4 metody × 5 strategii)\\
+      & Analiza wyników, wykresy, tabela podsumowująca \\
+
+    Luty 2027 &
+      Eksperymenty z SD inpainting (opcjonalnie) \\
+      & Pisanie rozdziału metodologicznego pracy \\
+
+    Marzec 2027 &
+      Pisanie rozdziału z wynikami i wnioskami \\
+      & Redakcja końcowa, oddanie pracy \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{Podsumowanie}
+  \begin{columns}[T]
+    \begin{column}{.55\textwidth}
+      \textbf{Wkład pracy (contribution):}
+      \begin{itemize}
+        \item Pierwsza systematyczna analiza porównawcza
+              5 strategii zastępowania pikseli w metrykach Ins./Del.
+        \item Empiryczne potwierdzenie/obalenie hipotezy OoD
+        \item Rekomendacja strategii dla przyszłych badań XAI
+        \item Publiczny notebook Google Colab z reprodukowalnym kodem
+      \end{itemize}
+    \end{column}
+    \begin{column}{.42\textwidth}
+      \begin{block}{Kluczowe metryki eksperymentu}
+        \begin{itemize}
+          \item \textbf{50} obrazów, 10 klas
+          \item \textbf{4} metody XAI
+          \item \textbf{5} strategii zastępowania
+          \item \textbf{20} kroków per krzywa
+          \item $\approx$ \textbf{2000} pomiarów AUC
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+
+  \vspace{10pt}
+  \begin{center}
+    \textbf{\Large Dziękuję za uwagę!}\\[6pt]
+    \small Pytania? Uwagi?
+  \end{center}
+\end{frame}
+
+% ============================================================
+% Slajdy uzupełniające (backup)
+% ============================================================
+
+\appendix
+
+\begin{frame}[allowframebreaks]{Literatura}
+  \small
+  \begin{thebibliography}{99}
+
+    \bibitem{petsiuk2018}
+    Petsiuk, V., Das, A., \& Saenko, K. (2018).
+    \textit{RISE: Randomized Input Sampling for Explanation of Black-box Models}.
+    BMVC.
+
+    \bibitem{selvaraju2017}
+    Selvaraju, R.R., et al. (2017).
+    \textit{Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization}.
+    ICCV.
+
+    \bibitem{sundararajan2017}
+    Sundararajan, M., Taly, A., \& Yan, Q. (2017).
+    \textit{Axiomatic Attribution for Deep Networks}.
+    ICML.
+
+    \bibitem{ribeiro2016}
+    Ribeiro, M.T., Singh, S., \& Guestrin, C. (2016).
+    \textit{"Why Should I Trust You?": Explaining the Predictions of Any Classifier}.
+    KDD.
+
+    \bibitem{lundberg2017}
+    Lundberg, S.M., \& Lee, S.I. (2017).
+    \textit{A Unified Approach to Interpreting Model Predictions}.
+    NeurIPS.
+
+    \bibitem{agarwal2020}
+    Agarwal, C., \& Nguyen, A. (2020).
+    \textit{Explaining Image Classifiers by Removing Input Features Using Generative Models}.
+    ACCV.
+
+    \bibitem{back2baseline2025}
+    Back to the Baseline: Examining Baseline Effects on Explainability Metrics.
+    arXiv:2512.11433.
+
+    \bibitem{decoupling2024}
+    Blücher, S. et al. (2024).
+    \textit{Decoupling Pixel Flipping and Occlusion Strategy for Consistent XAI Benchmarks}.
+    arXiv:2401.06654.
+
+    \bibitem{lili2025}
+    Inpainting Insights: Elevating Visual XAI with Photorealistic Perturbations.
+    arXiv:2607.15482.
+
+    \bibitem{telea2004}
+    Telea, A. (2004).
+    \textit{An Image Inpainting Technique Based on the Fast Marching Method}.
+    Journal of Graphics Tools, 9(1), 23–34.
+
+  \end{thebibliography}
+\end{frame}
+
+\begin{frame}{Uzupełnienie: Stable Diffusion Inpainting}
+  \begin{columns}[T]
+    \begin{column}{.5\textwidth}
+      \textbf{Model:} \texttt{stabilityai/stable-diffusion-2-inpainting}
+      \begin{itemize}
+        \item U-Net z warunkowym wejściem maski
+        \item 20 kroków DDIM (kompromis prędkość/jakość)
+        \item Dylatacja maski (8px) — kluczowa dla usunięcia artefaktów
+        \item Prompt: ``a natural scene'' (neutralny)
+      \end{itemize}
+      \vspace{6pt}
+      \textbf{Ograniczenia:}
+      \begin{itemize}
+        \item Stochastyczność — każde wywołanie daje inny wynik
+        \item Semantic leakage — może halucynować cechy klasy
+        \item Wymaga $>10$ GB VRAM (Colab A100)
+        \item $\approx 3$ s / obraz (vs $<0.01$ s dla CV2)
+      \end{itemize}
+    \end{column}
+    \begin{column}{.47\textwidth}
+      \begin{block}{Procedura}
+        \begin{enumerate}
+          \item Mapa istotności $\rightarrow$ maska binarna
+          \item Dylatacja maski (kernel 8px)
+          \item Przekaż do SD2: obraz + maska + prompt
+          \item Próbkuj przez 20 kroków (DDIM)
+          \item Sklejanie: zamień tylko zamaskowane piksele
+        \end{enumerate}
+      \end{block}
+      \vspace{4pt}
+      \small
+      Semantic leakage to kluczowe wyzwanie: SD może rekonstruować
+      obiekt na podstawie kontekstu, fałszywie zawyżając konfidencję.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\end{document}
